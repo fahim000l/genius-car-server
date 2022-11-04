@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const jwt = require('jsonwebtoken');
 const dotenv = require('dotenv').config();
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const app = express();
@@ -15,6 +16,22 @@ app.get('/', (req, res) => {
 console.log(process.env.DB_USER);
 console.log(process.env.DB_PASSWORD);
 
+
+function varifyJwt(req, res, next) {
+
+    const authHeader = req.headers.authorization;
+    if (!authHeader) {
+        return res.status(401).send('Unauthorized Access');
+    }
+    const token = authHeader.split(' ')[1];
+    jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, function (err, decoded) {
+        if (err) {
+            return res.status(401).send('Unauthorized Access');
+        }
+        req.decoded = decoded;
+        next();
+    })
+}
 
 
 
@@ -49,7 +66,13 @@ async function run() {
             res.send(result);
         });
 
-        app.get('/orders', async (req, res) => {
+        app.get('/orders', varifyJwt, async (req, res) => {
+            const decoded = req.decoded;
+
+            if (decoded.email !== req.query.email) {
+                return res.status(403).send({ message: 'Unauthorized Access' })
+            }
+
             let query = {};
             if (req.query.email) {
                 query = { "customerInfo.email": req.query.email }
@@ -88,6 +111,13 @@ async function run() {
 
             const result = await ordersCollection.updateOne(query, updatedDoc);
             res.send(result);
+        });
+
+        app.post('/jwt', (req, res) => {
+            const user = req.body;
+            console.log(user);
+            const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '1h' });
+            res.send({ token });
         })
 
     }
@@ -97,7 +127,6 @@ async function run() {
 };
 
 run().catch(error => console.log(error));
-
 
 app.listen(port, () => {
     console.log('genius-car-server is running on port :', port);
